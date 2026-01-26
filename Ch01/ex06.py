@@ -20,10 +20,18 @@ output_parser = StrOutputParser()
 
 chain = prompt | model | output_parser
 
+analysis_prompt = ChatPromptTemplate.from_template(
+    "이 답변을 영어로 번역해 주세요:\n{answer}"
+)
+
+composed_chain = (
+    chain
+    | (lambda x: {"answer": x})
+    | analysis_prompt
+    | model
+    | StrOutputParser()
+)
+
 if __name__ == "__main__":
-    print("[스트리밍 시작]\n")
-
-    for chunk in chain.stream({"topic": "더블딥"}):
-        print(chunk, end="", flush=True)
-
-    print("\n\n[스트리밍 종료]")
+    result = composed_chain.invoke({"topic": "더블딥"})
+    print(result)

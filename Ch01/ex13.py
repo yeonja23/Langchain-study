@@ -2,7 +2,9 @@ from dotenv import load_dotenv
 
 from langchain_chroma import Chroma
 from langchain_core.example_selectors import SemanticSimilarityExampleSelector
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.prompts import FewShotPromptTemplate, PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 
 load_dotenv()
 
@@ -32,7 +34,7 @@ examples = [
     }
 ]
 
-# 2) 예제 선택기 초기화
+# 2) 예제 선택기 초기화 (질문과 유사한 예제 k개 자동 선택)
 example_selector = SemanticSimilarityExampleSelector.from_examples(
     examples=examples,
     embeddings=OpenAIEmbeddings(),
@@ -40,18 +42,32 @@ example_selector = SemanticSimilarityExampleSelector.from_examples(
     k=1,
 )
 
-# 3) 입력 질문
-question = "부동산 투자에 어떤 이점이 있나요?"
-
-# 4) 가장 유사한 예제 선택
-selected_examples = example_selector.select_examples(
-    {"question": question}
+# 3) 예시 1개를 "질문/답변" 형식으로 포맷하는 템플릿
+example_prompt = PromptTemplate(
+    input_variables=["question", "answer"],
+    template="질문: {question}\n답변: {answer}"
 )
 
-# 5) 결과 출력
-print(f"입력 질문: {question}")
+# 4) FewShotPromptTemplate: (유사한 예제 선택기 + prefix/suffix)로 최종 프롬프트 조립
+prompt = FewShotPromptTemplate(
+    example_selector=example_selector,
+    example_prompt=example_prompt,
+    prefix="다음은 금융 관련 질문과 답변의 예입니다:",
+    suffix="질문: {input}\n답변:",
+    input_variables=["input"],
+)
 
-for example in selected_examples:
-    print("\n# 입력과 가장 유사한 예제:")
-    for k, v in example.items():
-        print(f"{k}: {v}")
+# 5) 모델 + 체인
+model = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.2,
+    max_tokens=300,
+)
+
+chain = prompt | model
+
+# 6) 실행
+if __name__ == "__main__":
+    question = "부동산 투자에 어떤 이점이 있나요?"
+    result = chain.invoke({"input": question})
+    print(result.content)
